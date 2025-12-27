@@ -69,3 +69,56 @@ df1.write \
 	    .option('header', 'true') \
 	.csv('gs://translateqna-spark/bigquery_public_data/america_health_rankings/ahr')
 
+
+
+
+# Read from Bigquery, write to Pubsub
+df2=spark.read \
+	.format('bigquery') \
+	  .option("temporaryGcsBucket", "translateqna-spark") \
+	  .option("project", "translateqna") \
+	  .option("parentProject", "translateqna") \
+	  .option("credentialsFile", "/opt/spark/key.json") \
+	.load("bigquery-public-data.austin_bikeshare.bikeshare_stations")
+	
+df2_cached = df2.cache()	
+df2_cached.count()
+
+
+def write_to_pubsub_with_attributes(partition):
+    from google.cloud import pubsub_v1
+    from google.oauth2 import service_account
+    import json
+    from datetime import datetime, date
+    
+    # Custom JSON encoder for datetime objects
+    def json_converter(obj):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+    
+    # Load credentials from the service account key file
+    credentials = service_account.Credentials.from_service_account_file(
+        '/opt/spark/key.json'
+    )
+    
+    publisher = pubsub_v1.PublisherClient(credentials=credentials)
+    topic_path = publisher.topic_path("translateqna", "feedback")
+    
+    for row in partition:
+        # Use custom converter for datetime objects
+        message_data = json.dumps(row.asDict(), default=json_converter).encode('utf-8')
+        
+        # Add custom attributes
+        attributes = {
+            "source": "spark",
+            "timestamp": str(row.timestamp) if hasattr(row, 'timestamp') else ""
+        }
+        
+        future = publisher.publish(topic_path, message_data, **attributes)
+        future.result()
+
+df2.foreachPartition(write_to_pubsub_with_attributes)
+
+
+

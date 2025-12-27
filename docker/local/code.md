@@ -122,3 +122,60 @@ df2.foreachPartition(write_to_pubsub_with_attributes)
 
 
 
+# Read from Bigquery, write to Datastore
+df3=spark.read \
+	.format('bigquery') \
+	  .option("temporaryGcsBucket", "translateqna-spark") \
+	  .option("project", "translateqna") \
+	  .option("parentProject", "translateqna") \
+	  .option("credentialsFile", "/opt/spark/key.json") \
+	.load("bigquery-public-data.austin_bikeshare.bikeshare_stations")
+	
+df3_cached = df2.cache()	
+df3_cached.count()
+
+
+def write_to_datastore(partition):
+    from google.cloud import datastore
+    from google.oauth2 import service_account
+    from datetime import datetime, date
+    
+    # Load credentials
+    credentials = service_account.Credentials.from_service_account_file(
+        '/opt/spark/key.json'
+    )
+    
+    # Initialize Datastore client
+    client = datastore.Client(
+        project="translateqna",
+        credentials=credentials
+    )
+    
+    for row in partition:
+        # Convert row to dictionary
+        row_dict = row.asDict()
+        
+        # Create a unique key - use a field from your data or auto-generate
+        # Option 1: Use an ID field from your data
+        if 'id' in row_dict:
+            key = client.key('bikeshare_stations', row_dict['id'])
+        else:
+            # Option 2: Let Datastore auto-generate ID
+            key = client.key('bikeshare_stations')
+        
+        # Create entity
+        entity = datastore.Entity(key=key)
+        
+        # Convert datetime objects to compatible format
+        for k, v in row_dict.items():
+            if isinstance(v, (datetime, date)):
+                entity[k] = v  # Datastore handles datetime natively
+            elif v is None:
+                entity[k] = None
+            else:
+                entity[k] = v
+        
+        # Save to Datastore
+        client.put(entity)
+
+df3.foreachPartition(write_to_datastore)

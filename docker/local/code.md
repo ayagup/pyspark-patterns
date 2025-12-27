@@ -1,6 +1,22 @@
 # In WSL 2 with docker installed
 
 
+# Dump from public-data project to GCS
+
+EXPORT DATA OPTIONS(
+  uri='gs://translateqna-spark/bigquery_public_data/austin_311/311_service_requests_*.csv',
+  format='CSV',
+  overwrite=true,
+  header=true,
+  field_delimiter=','
+) AS
+SELECT * FROM `bigquery-public-data.austin_311.311_service_requests`
+WHERE date_column > '2025-01-01'
+
+
+
+
+# Run docker spark on local
   docker run -it \
  -v ~/spark_ivy_cache:/tmp/.ivy2 \
  -v /mnt/c/Users/Lenovo/Downloads/translateqna-b3791e36203a.json:/opt/spark/key.json \
@@ -20,7 +36,7 @@ spark:python3-java17 /opt/spark/bin/pyspark  \
  
    
 
-
+# Write below commands on pyspark console
 # 3. Read data from GCS
 # Replace with your actual bucket and file path
 df = spark.read.csv("gs://translateqna-spark/bigquery_public_data/austin_311/*.csv", header=True, inferSchema=True)

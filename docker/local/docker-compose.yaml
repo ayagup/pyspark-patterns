@@ -1,0 +1,66 @@
+services:
+  spark-master:
+    image: spark-gcp:latest
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    ports:
+      - "8080:8080" # Spark Master Web UI
+      - "7077:7077" # Master Port
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    networks:
+      - spark-network
+
+  spark-worker:
+    image: spark-gcp:latest
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2G
+    depends_on:
+      - spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    networks:
+      - spark-network
+
+  pyspark-client:
+    image: spark-gcp:latest
+    container_name: pyspark-client
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - GOOGLE_APPLICATION_CREDENTIALS=/opt/spark/key.json
+    volumes:
+      - /mnt/c/Users/Lenovo/Downloads/translateqna-b3791e36203a.json:/opt/spark/key.json
+      - ~/spark_ivy_cache:/tmp/.ivy2
+    stdin_open: true
+    tty: true
+    depends_on:
+      - spark-master
+      - spark-worker
+    networks:
+      - spark-network
+    command: >
+      /opt/spark/bin/pyspark 
+      --master spark://spark-master:7077 
+      --packages com.google.cloud.spark:spark-bigquery-with-dependencies_2.13:0.43.1,com.google.cloud.bigdataoss:gcs-connector:hadoop3-2.2.22 
+      --conf "spark.driver.extraJavaOptions=-Divy.cache.dir=/tmp/.ivy2 -Divy.home=/tmp/.ivy2" 
+      --conf "spark.executor.extraJavaOptions=-Divy.cache.dir=/tmp/.ivy2 -Divy.home=/tmp/.ivy2" 
+      --conf "spark.hadoop.google.cloud.auth.service.account.enable=true" 
+      --conf "spark.hadoop.google.cloud.auth.service.account.json.keyfile=/opt/spark/key.json" 
+      --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" 
+      --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" 
+      --conf "spark.hadoop.fs.gs.auth.service.account.enable=true" 
+      --conf "spark.hadoop.fs.gs.auth.service.account.json.keyfile=/opt/spark/key.json"
+
+networks:
+  spark-network:
+    driver: bridge
+
+volumes:
+  spark_ivy_cache:

@@ -37,12 +37,9 @@ spark:python3-java17 /opt/spark/bin/pyspark  \
    
 
 # Write below commands on pyspark console
-# 3. Read data from GCS
-# Replace with your actual bucket and file path
+# 3. Read data from GCS, Write to Bigquery
 df = spark.read.csv("gs://translateqna-spark/bigquery_public_data/austin_311/*.csv", header=True, inferSchema=True)
 
-# 4. Write data to BigQuery
-# You must specify a temporary GCS bucket for BigQuery to use during the export/import process
 df.write \
   .format("bigquery") \
   .option("temporaryGcsBucket", "translateqna-spark") \
@@ -53,4 +50,22 @@ df.write \
   .mode("overwrite") \
   .save()
 
-print("Data transfer complete!")
+
+
+
+# Read from Bigquery, write to GCS
+df1=spark.read \
+	.format('bigquery') \
+	  .option("temporaryGcsBucket", "translateqna-spark") \
+	  .option("project", "translateqna") \
+	  .option("parentProject", "translateqna") \
+	  .option("credentialsFile", "/opt/spark/key.json") \
+	.load("bigquery-public-data.america_health_rankings.ahr")
+	
+	
+
+df1.write \
+	.mode('overwrite') \
+	    .option('header', 'true') \
+	.csv('gs://translateqna-spark/bigquery_public_data/america_health_rankings/ahr')
+
